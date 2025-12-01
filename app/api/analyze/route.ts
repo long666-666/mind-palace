@@ -2,19 +2,22 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
-// 1. 初始化 AI 客户端
-const openai = new OpenAI({
-  apiKey: process.env.AI_API_KEY,
-  baseURL: process.env.AI_BASE_URL,
-});
-
-// 2. 初始化 Supabase (为了在服务器端更新数据)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 export async function POST(req: Request) {
+  // 🟢 修复动作：把初始化全部搬到了函数内部
+  // 这样构建服务器就不会在没有 Key 的情况下尝试启动 AI 了
+
+  // 1. 初始化 AI 客户端 (注意：这里我帮你改成了 DEEPSEEK_API_KEY，跟你 Vercel 填的一致)
+  const openai = new OpenAI({
+    apiKey: process.env.DEEPSEEK_API_KEY, 
+    baseURL: "https://api.deepseek.com", // 直接写死 DeepSeek 地址，省得你再去配置变量
+  });
+
+  // 2. 初始化 Supabase
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   try {
     const { thoughtId, content } = await req.json();
 
@@ -22,7 +25,7 @@ export async function POST(req: Request) {
 
     // 3. 呼叫 AI 大脑
     const completion = await openai.chat.completions.create({
-      model: "deepseek-chat", // 如果你用别的厂商，改这里的模型名字，比如 "gpt-4o-mini"
+      model: "deepseek-chat", 
       messages: [
         { 
           role: "system", 
@@ -33,7 +36,7 @@ export async function POST(req: Request) {
       temperature: 0.7,
     });
 
-    const insight = completion.choices[0].message.content;
+    const insight = completion.choices[0]?.message?.content || "系统繁忙，思维短路中...";
 
     // 4. 把 AI 的想法存回数据库
     const { error } = await supabase
@@ -47,6 +50,7 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error("AI 处理失败:", error);
-    return NextResponse.json({ error: "Brain failure" }, { status: 500 });
+    // 这里改成返回 200 但带错误信息，防止前端崩掉，或者保持 500
+    return NextResponse.json({ error: "Brain failure: " + String(error) }, { status: 500 });
   }
 }
